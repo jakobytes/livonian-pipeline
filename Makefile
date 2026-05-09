@@ -137,7 +137,9 @@ $(work_dir)/kr/collectors.csv:
 
 $(work_dir)/vldl/collectors.csv:
 	mkdir -p $(work_dir)/vldl
-	echo "collector_id,collector_name" > $@
+	( [ -f "$(raw_dir)/vldl/collectors.csv" ] \
+	  && cp $(raw_dir)/vldl/collectors.csv $@ ) \
+	|| ( echo "collector_id,collector_name" > $@ )
 
 $(work_dir)/kr/poem_place.csv: $(work_dir)/kr/meta.csv
 	csvcut -c poem_id,place_id $< | csvgrep -c place_id -r '^.+$$' > $@
