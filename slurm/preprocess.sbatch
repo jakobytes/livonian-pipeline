@@ -6,6 +6,6 @@
 #SBATCH --partition=small
 #SBATCH --ntasks=1
 
-srun -D .. env DATA_DIR=$PROJSCRATCH/filter-data \
+srun -D .. env DATA_DIR=csvs \
 	make combined
 
