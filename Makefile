@@ -30,6 +30,18 @@ kr: \
   $(work_dir)/kr/types.csv \
   $(work_dir)/kr/word_occ.csv
 
+vldl: \
+  $(work_dir)/vldl/verses.csv \
+  $(work_dir)/vldl/meta.csv \
+  $(work_dir)/vldl/poems.csv \
+  $(work_dir)/vldl/raw_meta.csv \
+  $(work_dir)/vldl/refs.csv \
+  $(work_dir)/vldl/collectors.csv \
+  $(work_dir)/vldl/places.csv \
+  $(work_dir)/vldl/poem_place.csv \
+  $(work_dir)/vldl/poem_collector.csv \
+  $(work_dir)/vldl/poem_year.csv
+
 ###################################################################
 # PREPROCESSING
 ###################################################################
