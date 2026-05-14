@@ -17,28 +17,17 @@ from convert_skvr import read_inputs as skvr_read_inputs
 
 
 PREFIX = 'vldl_'
-VLDL_PLACE_ID = 'vldl_0100'
 
 
 def read_inputs(filenames, prefix, collection):
-    for item in skvr_read_inputs(filenames, prefix, collection):
-        item['place_id'] = VLDL_PLACE_ID
-        yield item
+    yield from skvr_read_inputs(filenames, prefix, collection)
 
 def make_display_name(item):
     if 'metaxml' in item:
-        n_teos = item['metaxml'].find('TEOS')
-        n_osa = item['metaxml'].find('OSA')
-        n_id = item['metaxml'].find('ID')
-    text_teos = n_teos.text if n_teos is not None else None
-    text_osa = n_osa.text if n_osa is not None else None
-    text_id = n_id.text if n_id is not None else None
-    if text_osa is not None and text_id is not None:
-        return '{} {}'.format(text_osa, text_id)
-    elif text_teos is not None and text_id is not None:
-        return '{} {}'.format(text_teos, text_id)
-    else:
-        return None
+        n_sgn = item['metaxml'].find('SGN')
+        if n_sgn is not None and n_sgn.text:
+            return n_sgn.text
+    return None
 
 #########################################################################
 # MAPPING FUNCTIONS

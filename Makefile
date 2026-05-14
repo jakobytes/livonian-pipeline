@@ -176,8 +176,9 @@ $(work_dir)/kr/places.csv:
 
 $(work_dir)/vldl/places.csv:
 	mkdir -p $(work_dir)/vldl
-	( echo "place_id,place_name,place_type,place_parent_id" > $@ )
-	echo "vldl_0100,Livonian coast,county," >> $@
+	( [ -f "$(raw_dir)/vldl/places.csv" ] \
+	  && cp $(raw_dir)/vldl/places.csv $@ ) \
+	|| ( echo "place_id,place_name,place_type,place_parent_id" > $@ )
 
 $(work_dir)/kr/types.csv:
 	mkdir -p $(work_dir)/kr
