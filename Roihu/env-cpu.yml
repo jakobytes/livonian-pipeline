@@ -1,0 +1,22 @@
+name: filter-cpu
+# Target: Roihu CPU partition (AMD Turin, x86_64) - preprocessing stage.
+# Build on roihu-cpu.csc.fi.
+channels:
+  - conda-forge
+  - nodefaults           # keep Anaconda "defaults" out of the solve
+dependencies:
+  - python=3.12
+  - pytorch-cpu          # needed only so matrix-align installs; no GPU on these nodes
+  - faiss-cpu
+  - numpy
+  - scipy
+  - pandas
+  - geopandas
+  - lxml
+  - csvkit
+  - jq                   # used by the polygon_to_place and runoregi_pages rules
+  - tqdm
+  - pip
+  - pip:
+    - git+https://github.com/hsci-r/shortsim
+    - git+https://github.com/maciejjan/matrix-align

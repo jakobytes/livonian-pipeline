@@ -1,9 +1,16 @@
+# pip alternative to Roihu/env-cpu.yml (CPU only). Python >= 3.10.
+# Also requires the command-line tool jq (not pip-installable),
+# e.g. `apt install jq` or `brew install jq`.
+# For GPU use, prefer Roihu/env.yml, or install torch per pytorch.org
+# and replace faiss-cpu with faiss-gpu-cu12.
 csvkit
 geopandas
 lxml
+numpy
 pandas
 scipy
 torch
+faiss-cpu
 tqdm
 git+https://github.com/hsci-r/shortsim
 git+https://github.com/maciejjan/matrix-align
