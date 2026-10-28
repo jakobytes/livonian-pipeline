@@ -660,3 +660,285 @@ emb_p_sim_part_%: $(emb_p_sim_parts_dir)/part_%.csv ;
 
 emb_poem_clust: $(emb_dir)/p_sim.csv $(emb_dir)/p_clust.tsv
 
+
+###################################################################
+# RUNOREGI DATABASE
+###################################################################
+
+# The tables of the runoregi database as Parquet files, in
+# $(RUNOREGI_DIR). First the tables are prepared as CSV files with unique
+# numeric keys (adapted from https://github.com/jakobytes/filter-db), then
+# converted to Parquet by export_runoregi.py, which mimics the MariaDB
+# database that filter-db creates (column types, primary keys, computed
+# frequency and statistics tables).
+#
+# The verse similarities and the poem similarities and clustering are the
+# n-gram ones. With RUNOREGI_EMB set to an embedding model (see EMB_MODEL),
+# its verse clusterings are added to v_clust and v_clusterings.
+
+RUNOREGI_DIR ?= $(DATA_DIR)/runoregi
+RUNOREGI_EMB ?=
+
+tbl_dir = $(work_dir)/runoregi
+trk = $(python) code/translate_keys.py
+
+runoregi_v_clust = $(DATA_DIR)/v_clust.tsv \
+  $(if $(RUNOREGI_EMB),$(DATA_DIR)/emb/$(RUNOREGI_EMB)/v_clust.tsv)
+runoregi_v_clusterings = $(DATA_DIR)/v_clusterings.csv \
+  $(if $(RUNOREGI_EMB),$(DATA_DIR)/emb/$(RUNOREGI_EMB)/v_clusterings.csv)
+
+runoregi_tables = \
+  collectors maps map_pol places polygons pol_pl poems p_col p_dupl \
+  p_pl p_typ p_year raw_meta refs runoregi_pages types verses verse_poem \
+  verses_cl word_occ words v_clusterings v_clust v_sim p_sim p_clust \
+  v_clust_freq p_clust_freq word_freq place_stats dbmeta
+
+.PHONY: runoregi
+
+runoregi: $(patsubst %,$(RUNOREGI_DIR)/%.parquet,$(runoregi_tables))
+
+$(patsubst %,$(RUNOREGI_DIR)/%.parquet,$(runoregi_tables)) &: \
+  $(tbl_dir)/collectors.tbl.csv \
+  $(tbl_dir)/maps.tbl.csv \
+  $(tbl_dir)/map_pol.tbl.csv \
+  $(tbl_dir)/places.tbl.csv \
+  $(tbl_dir)/polygons.tbl.csv \
+  $(tbl_dir)/pol_pl.tbl.csv \
+  $(tbl_dir)/poems.tbl.csv \
+  $(tbl_dir)/p_col.tbl.csv \
+  $(tbl_dir)/p_dupl.tbl.csv \
+  $(tbl_dir)/p_pl.tbl.csv \
+  $(tbl_dir)/p_typ.tbl.csv \
+  $(tbl_dir)/p_year.tbl.csv \
+  $(tbl_dir)/raw_meta.tbl.csv \
+  $(tbl_dir)/refs.tbl.csv \
+  $(tbl_dir)/runoregi_pages.tbl.tsv \
+  $(tbl_dir)/types.tbl.csv \
+  $(tbl_dir)/verses.tbl.csv \
+  $(tbl_dir)/verse_poem.tbl.csv \
+  $(tbl_dir)/verses_cl.tbl.csv \
+  $(tbl_dir)/word_occ.tbl.csv \
+  $(tbl_dir)/words.tbl.csv \
+  $(tbl_dir)/v_clusterings.tbl.csv \
+  $(tbl_dir)/v_clust.tbl.csv \
+  $(tbl_dir)/v_sim.tbl.csv \
+  $(tbl_dir)/p_sim.tbl.csv \
+  $(tbl_dir)/p_clust.tbl.csv
+	$(python) code/export_runoregi.py -i $(tbl_dir) -o $(RUNOREGI_DIR)
+
+# The key dictionaries (*.idmap.csv, verses.tbl.csv, words.tbl.csv) are
+# extended by the rules using them, so the order of the rules matters:
+# poems and verses first.
+
+$(tbl_dir)/collectors.tbl.csv: $(DATA_DIR)/collectors.csv
+	mkdir -p $(tbl_dir)
+	$(trk) -i $< \
+	       -o /dev/null \
+	       -d collector_id,collector_name:col_id:$@
+
+$(tbl_dir)/maps.tbl.csv:
+	mkdir -p $(tbl_dir)
+	echo 'map_id,name' > $@
+	echo '0,"parishes (all)"' >> $@
+	echo '1,"counties (all)"' >> $@
+	echo '2,"parishes (Northern)"' >> $@
+	echo '3,"counties (Northern)"' >> $@
+	echo '4,"parishes (Southern)"' >> $@
+	echo '5,"counties (Southern)"' >> $@
+
+$(tbl_dir)/map_pol.tbl.csv: \
+  $(DATA_DIR)/areas.geojson \
+  $(DATA_DIR)/counties.geojson
+	mkdir -p $(tbl_dir)
+	echo 'map_id,pol_id' > $@
+	jq -r '.features[] | [.properties.id ] | @csv' \
+	  $(DATA_DIR)/areas.geojson \
+	| sed 's/^/0,/' >> $@
+	jq -r '.features[] | [.properties.id ] | @csv' \
+	  $(DATA_DIR)/counties.geojson \
+	| sed 's/^/1,/' >> $@
+	jq -r '.features[] | select(.properties.parish_name == "Setumaa") '\
+	'      | [.properties.id] | @tsv' $(DATA_DIR)/areas.geojson \
+	| sed 's/^/1,/' >> $@
+	jq -r '.features[] | select(.properties.parish_language != null) '\
+	'      | select(.properties.parish_language | test("kaA|su|ru|kaV|ka|in|ve|suI|ly"; ""))'\
+	'      | [ .properties.id ] | @csv' $(DATA_DIR)/areas.geojson \
+	| sed 's/^/2,/' >> $@
+	jq -r '.features[] | select(.properties.county_language != null) '\
+	'      | select(.properties.county_language | test("kaA|su|ru|kaV|ka|in|ve|suI|ly"; ""))'\
+	'      | [ .properties.id ] | @csv' $(DATA_DIR)/counties.geojson \
+	| sed 's/^/3,/' >> $@
+	jq -r '.features[] | select(.properties.parish_language != null) '\
+	'      | select(.properties.parish_language | test("viP|viE"; ""))'\
+	'      | [ .properties.id ] | @csv' $(DATA_DIR)/areas.geojson \
+	| sed 's/^/4,/' >> $@
+	jq -r '.features[] | select(.properties.county_language != null) '\
+	'      | select(.properties.county_language | test("viP|viE"; ""))'\
+	'      | [ .properties.id ] | @csv' $(DATA_DIR)/counties.geojson \
+	| sed 's/^/5,/' >> $@
+	jq -r '.features[] | select(.properties.parish_name == "Setumaa") '\
+	'      | [.properties.id] | @tsv' $(DATA_DIR)/areas.geojson \
+	| sed 's/^/5,/' >> $@
+
+$(tbl_dir)/places.tbl.csv: $(DATA_DIR)/places.csv
+	mkdir -p $(tbl_dir)
+	$(trk) -i $< -o $(tbl_dir)/places.tmp1.csv \
+	       -d place_id:pl_id:$(tbl_dir)/places.idmap.csv
+	$(trk) -i $(tbl_dir)/places.tmp1.csv \
+	       -o $(tbl_dir)/places.tmp2.csv \
+	       -d place_parent_id:par_id:$(tbl_dir)/places.idmap.csv:par_id,place_parent_id
+	sed -i '1s/par_id,place_parent_id/pl_id,place_id/' $(tbl_dir)/places.idmap.csv
+	ROOT_PLACE_ID=$$(tail -n 1 $(tbl_dir)/places.idmap.csv | cut -d, -f 1) \
+	&& sed -i "s/,$$ROOT_PLACE_ID\$$/,/" $(tbl_dir)/places.tmp2.csv
+	csvjoin -c pl_id $(tbl_dir)/places.idmap.csv \
+	                 $(tbl_dir)/places.tmp2.csv > $@
+	rm -f $(tbl_dir)/places.tmp*
+
+$(tbl_dir)/polygons.tbl.csv: \
+  $(DATA_DIR)/areas.geojson \
+  $(DATA_DIR)/counties.geojson
+	mkdir -p $(tbl_dir)
+	jq -r '.features[] | [.properties.id, .properties.parish_scripts,'\
+	'                     .properties.parish_language, .properties.parish_name,'\
+	'                     .geometry | tostring] | @tsv' \
+	  $(DATA_DIR)/areas.geojson > $@
+	jq -r '.features[] | [.properties.id, null,'\
+	'                     .properties.county_language, .properties.county_name,'\
+	'                     .geometry | tostring] | @tsv' \
+	  $(DATA_DIR)/counties.geojson >> $@
+
+$(tbl_dir)/pol_pl.tbl.csv: \
+  $(DATA_DIR)/polygon_to_place.csv \
+  $(tbl_dir)/places.tbl.csv
+	$(trk) -i $(DATA_DIR)/polygon_to_place.csv -O \
+	  -d place_id:pl_id:$(tbl_dir)/places.idmap.csv > $@
+
+$(tbl_dir)/types.tbl.csv: $(DATA_DIR)/types.csv
+	mkdir -p $(tbl_dir)
+	$(trk) -i $< -o $(tbl_dir)/types.tmp1.csv \
+	       -d type_id:t_id:$(tbl_dir)/types.idmap.csv
+	$(trk) -i $(tbl_dir)/types.tmp1.csv \
+	       -o $(tbl_dir)/types.tmp2.csv \
+	       -d type_parent_id:par_id:$(tbl_dir)/types.idmap.csv:par_id,type_parent_id
+	sed -i '1s/par_id,type_parent_id/t_id,type_id/' $(tbl_dir)/types.idmap.csv
+	ROOT_TYPE_ID=$$(tail -n 1 $(tbl_dir)/types.idmap.csv | cut -d, -f 1) \
+	&& sed -i "s/,$$ROOT_TYPE_ID\$$/,/" $(tbl_dir)/types.tmp2.csv
+	csvjoin -c t_id $(tbl_dir)/types.idmap.csv \
+	                $(tbl_dir)/types.tmp2.csv > $@
+	rm -f $(tbl_dir)/types.tmp*
+
+$(tbl_dir)/poems.tbl.csv: $(DATA_DIR)/poems.csv
+	mkdir -p $(tbl_dir)
+	$(trk) -a -i $< -o $@ -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv
+
+$(tbl_dir)/verses.tbl.csv: $(tbl_dir)/verse_poem.tbl.csv
+
+$(tbl_dir)/verse_poem.tbl.csv: \
+  $(DATA_DIR)/verses.csv \
+  $(tbl_dir)/poems.tbl.csv
+	$(trk) -i $(DATA_DIR)/verses.csv -o $@ \
+	       -d verse_type,text:v_id:$(tbl_dir)/verses.tbl.csv \
+	          poem_id:p_id:$(tbl_dir)/poems.idmap.csv
+
+$(tbl_dir)/verses_cl.tbl.csv: \
+  $(DATA_DIR)/verses_cl.csv \
+  $(tbl_dir)/verse_poem.tbl.csv
+	$(trk) -i $< -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv \
+	| $(python) code/map_columns.py -u -f p_id,pos -t v_id \
+	    $(tbl_dir)/verse_poem.tbl.csv > $@
+
+$(tbl_dir)/word_occ.tbl.csv: \
+  $(DATA_DIR)/word_occ.csv \
+  $(tbl_dir)/verse_poem.tbl.csv
+	$(trk) -i $< -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv \
+	                text:w_id:$(tbl_dir)/words.tbl.csv \
+	| $(python) code/map_columns.py -u -f p_id,pos -t v_id \
+	    $(tbl_dir)/verse_poem.tbl.csv > $@
+
+$(tbl_dir)/words.tbl.csv: $(tbl_dir)/word_occ.tbl.csv
+
+$(tbl_dir)/raw_meta.tbl.csv: \
+  $(DATA_DIR)/raw_meta.csv \
+  $(tbl_dir)/poems.tbl.csv
+	$(trk) -i $< -o $@ -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv
+
+$(tbl_dir)/p_col.tbl.csv: \
+  $(DATA_DIR)/poem_collector.csv \
+  $(tbl_dir)/poems.tbl.csv \
+  $(tbl_dir)/collectors.tbl.csv
+	csvcut -c col_id,collector_id $(tbl_dir)/collectors.tbl.csv \
+	  > $(tbl_dir)/collectors.idmap.csv
+	$(trk) -O -i $< -o $@ \
+	       -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv \
+	          collector_id:col_id:$(tbl_dir)/collectors.idmap.csv
+
+$(tbl_dir)/runoregi_pages.tbl.tsv: $(DATA_DIR)/runoregi_pages.tsv
+	mkdir -p $(tbl_dir)
+	cp $< $@
+
+$(tbl_dir)/p_dupl.tbl.csv: \
+  $(DATA_DIR)/poem_duplicates.csv \
+  $(tbl_dir)/poems.tbl.csv
+	$(trk) -O -i $< -o $@ \
+	       -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv \
+	          master_poem_id:master_p_id:$(tbl_dir)/poems.idmap.csv:master_p_id,master_poem_id
+
+$(tbl_dir)/p_pl.tbl.csv: \
+  $(DATA_DIR)/poem_place.csv \
+  $(tbl_dir)/poems.tbl.csv \
+  $(tbl_dir)/places.tbl.csv
+	$(trk) -O -i $< -o $@ \
+	       -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv \
+	          place_id:pl_id:$(tbl_dir)/places.idmap.csv
+
+$(tbl_dir)/p_year.tbl.csv: \
+  $(DATA_DIR)/poem_year.csv \
+  $(tbl_dir)/poems.tbl.csv
+	$(trk) -O -i $< -o $@ -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv
+
+$(tbl_dir)/p_typ.tbl.csv: \
+  $(DATA_DIR)/poem_types.csv \
+  $(tbl_dir)/poems.tbl.csv \
+  $(tbl_dir)/types.tbl.csv
+	$(trk) -O -i $< -o $@ \
+	       -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv \
+	          type_id:t_id:$(tbl_dir)/types.idmap.csv
+
+$(tbl_dir)/refs.tbl.csv: \
+  $(DATA_DIR)/refs.csv \
+  $(tbl_dir)/poems.tbl.csv
+	$(trk) -i $< -o $@ -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv
+
+$(tbl_dir)/p_sim.tbl.csv: \
+  $(DATA_DIR)/p_sim.csv \
+  $(tbl_dir)/poems.tbl.csv
+	$(trk) -O -i $< -o $@ \
+	  -d poem_id_1:p1_id:$(tbl_dir)/poems.idmap.csv:p1_id,poem_id_1 \
+	     poem_id_2:p2_id:$(tbl_dir)/poems.idmap.csv:p2_id,poem_id_2
+
+$(tbl_dir)/p_clust.tbl.csv: \
+  $(DATA_DIR)/p_clust.tsv \
+  $(tbl_dir)/poems.tbl.csv
+	csvformat -t $< | sed '1ipoem_id,clust_id' \
+	| $(trk) -i - -o $@ -d poem_id:p_id:$(tbl_dir)/poems.idmap.csv
+
+$(tbl_dir)/v_clusterings.tbl.csv: $(runoregi_v_clusterings)
+	mkdir -p $(tbl_dir)
+	head -n 1 $< > $@
+	for f in $^; do tail -n +2 $$f; done >> $@
+
+$(tbl_dir)/v_sim.tbl.csv: \
+  $(DATA_DIR)/v_sim.tsv \
+  $(tbl_dir)/verses_cl.tbl.csv
+	csvformat -t $< | sed '1itext_1,text_2,sim' \
+	| $(python) code/map_columns.py -m -f text_1 -t v1_id -H v1_id,text_1 \
+	                                 $(tbl_dir)/verses_cl.tbl.csv \
+	| $(python) code/map_columns.py -m -f text_2 -t v2_id -H v2_id,text_2 \
+	                                 $(tbl_dir)/verses_cl.tbl.csv > $@
+
+$(tbl_dir)/v_clust.tbl.csv: \
+  $(runoregi_v_clust) \
+  $(tbl_dir)/verses_cl.tbl.csv
+	cat $(runoregi_v_clust) | csvformat -t | sed '1iclustering_id,text,clust_id' \
+	| $(python) code/map_columns.py -m -f text -t v_id \
+	                                 $(tbl_dir)/verses_cl.tbl.csv > $@

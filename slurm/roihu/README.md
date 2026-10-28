@@ -41,8 +41,8 @@ slurm/roihu/submit.sh project_XXXXXXX
 This submits the following chain of jobs:
 
 ```
-preprocess (CPU) -+-> verse_sim (GPU) ---------> verse_clust (CPU)
-                  +-> poem_sim (GPU array) ----> poem_clust (CPU)
+preprocess (CPU) -+-> verse_sim (GPU) ---------> verse_clust (CPU) -+-> runoregi (CPU)
+                  +-> poem_sim (GPU array) ----> poem_clust (CPU) --+
 ```
 
 The GPU jobs only run the GPU computations (`shortsim-ngrcos` and
@@ -77,6 +77,26 @@ written to `output/emb/<EMB_MODEL>/`. As there are no n-gram weightings,
 `emb-loose`. Their IDs continue after the six n-gram clusterings (6, 7, 8),
 as runoregi requires consecutive IDs; set `EMB_CLUST_ID=0` for a database
 with only the embedding-based clusterings.
+
+### Runoregi database
+
+The last job (`make runoregi`) writes the tables of the
+[runoregi](https://github.com/hsci-r/runoregi) database as Parquet files to
+`output/runoregi/`, directly and without MariaDB. The tables are first
+prepared with numeric keys (adapted from
+[filter-db](https://github.com/jakobytes/filter-db)), then converted by
+`code/export_runoregi.py`, which mimics the MariaDB database: the column
+types of its tables, rows with a duplicate primary key dropped, rows sorted
+by the primary key, and the frequency and statistics tables computed.
+
+Unlike MariaDB, it does not truncate texts longer than the column width
+(e.g. `verses.type`, `raw_meta.field`) or interpret backslashes in the
+data as escapes, and floats keep their full precision.
+
+The verse and poem similarities and the poem clustering in these tables are
+the n-gram ones. In a run with `EMB_MODEL`, the verse clusterings of the
+embeddings are added to `v_clust` and `v_clusterings` (IDs 6–8); the n-gram
+tables must then exist from an earlier run.
 
 ### Output
 

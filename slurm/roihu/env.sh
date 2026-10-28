@@ -27,10 +27,11 @@ MAKE_VARS=(
 mkdir -p "$FILTER_SCRATCH/work" "$FILTER_SCRATCH/output"
 
 # With EMB_MODEL set, the similarity jobs compute the embedding-based
-# tables (the emb_* targets in the Makefile) instead of the n-gram ones.
+# tables (the emb_* targets in the Makefile) instead of the n-gram ones,
+# and the runoregi tables get its verse clusterings in addition.
 SIM=
 if [ -n "$EMB_MODEL" ]; then
-  MAKE_VARS+=(EMB_MODEL="$EMB_MODEL")
+  MAKE_VARS+=(EMB_MODEL="$EMB_MODEL" RUNOREGI_EMB="$EMB_MODEL")
   SIM=emb_
 fi
 

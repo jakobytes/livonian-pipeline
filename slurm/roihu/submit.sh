@@ -1,12 +1,14 @@
 #!/bin/bash
 # Submit the pipeline on Roihu as a chain of dependent Slurm jobs:
 #
-#   preprocess (CPU) -+-> verse_sim (GPU) ---------> verse_clust (CPU)
-#                     +-> poem_sim (GPU array) ----> poem_clust (CPU)
+#   preprocess (CPU) -+-> verse_sim (GPU) ---------> verse_clust (CPU) -+-> runoregi (CPU)
+#                     +-> poem_sim (GPU array) ----> poem_clust (CPU) --+
 #
 # With EMB_MODEL set, the similarities are computed from the verse
 # embeddings of that model instead of character n-grams, preceded by
-# an emb_vectors (CPU) job that prepares the embeddings.
+# an emb_vectors (CPU) job that prepares the embeddings. The runoregi
+# tables then contain the n-gram similarities computed by an earlier run,
+# plus the verse clusterings of the embeddings.
 #
 # Usage (on either Roihu login node):
 #   [EMB_MODEL=...] slurm/roihu/submit.sh project_XXXXXXX [--skip-preprocess]
@@ -40,8 +42,10 @@ vs=$(sb "${dep[@]}" slurm/roihu/verse_sim.sbatch)
 vc=$(sb --dependency=afterok:$vs slurm/roihu/verse_clust.sbatch)
 ps=$(sb "${dep[@]}" --array=0-$((POEM_SIM_JOBS-1)) slurm/roihu/poem_sim.sbatch)
 pc=$(sb --dependency=afterok:$ps slurm/roihu/poem_clust.sbatch)
+rg=$(sb --dependency=afterok:$vc:$pc slurm/roihu/runoregi.sbatch)
 
 echo "verse_sim:   $vs"
 echo "verse_clust: $vc"
 echo "poem_sim:    $ps (array of $POEM_SIM_JOBS)"
 echo "poem_clust:  $pc"
+echo "runoregi:    $rg"
