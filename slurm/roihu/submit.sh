@@ -14,6 +14,8 @@
 #   [EMB_MODEL=...] slurm/roihu/submit.sh project_XXXXXXX [--skip-preprocess]
 #
 # The number of poem_sim parts (= GPUs) is set by POEM_SIM_JOBS (default 4).
+# With AFTER set to a job ID, the chain starts only after that job has
+# completed successfully (e.g. the runoregi job of an n-gram run).
 
 set -eo pipefail
 
@@ -26,8 +28,11 @@ mkdir -p logs
 sb() { sbatch --parsable -A "$account" "$@"; }
 
 dep=()
+if [ -n "$AFTER" ]; then
+  dep=(--dependency=afterok:$AFTER)
+fi
 if [ "$2" != "--skip-preprocess" ]; then
-  pre=$(sb slurm/roihu/preprocess.sbatch)
+  pre=$(sb "${dep[@]}" slurm/roihu/preprocess.sbatch)
   dep=(--dependency=afterok:$pre)
   echo "preprocess:  $pre"
 fi

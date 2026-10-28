@@ -70,6 +70,9 @@ EMB_MODEL=filter_p4_vb_v45_w45_m10_ctx \
   slurm/roihu/submit.sh project_XXXXXXX --skip-preprocess
 ```
 
+To queue it right after an n-gram run, set `AFTER` to the ID of that run's
+runoregi job: the whole chain then waits for it to complete successfully.
+
 `EMB_MODEL` is the name of an embeddings file without the
 `verse_embeddings_` prefix and `.parquet` suffix. An extra CPU job
 downloads it and aligns it with the verses of the pipeline. The resulting
