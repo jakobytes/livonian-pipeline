@@ -14,11 +14,11 @@ source data using the command:
 	git submodule update --init --recursive
 
 Further, install the Python dependencies. The preferred way of doing it
-is through Anaconda (conda-forge) - use the environment file `Roihu/env.yml`
-on a machine with an NVIDIA GPU.`Roihu/env-cpu.yml`can be used to run the preprocessing on any PC. For CSC
+is through Anaconda (conda-forge) - use the environment file `slurm/roihu/env-gpu.yml`
+on a machine with an NVIDIA GPU. `slurm/roihu/env-cpu.yml` can be used to run the preprocessing on any PC. For CSC
 computing clusters, it is recommended to use
 [Tykky][3]; see
-[`Roihu/`][4] for instructions on the Roihu supercomputer.
+[`slurm/roihu/`][4] for instructions on the Roihu supercomputer.
 
 The different steps of the pipeline are called using GNU Make. The
 environment variable `DATA_DIR` should be set to the path of the output
@@ -64,7 +64,7 @@ in their repositories.
 [1]:	https://blogs.helsinki.fi/filter-project/
 [2]:	https://github.com/hsci-r/filter-data
 [3]:	https://docs.csc.fi/computing/containers/tykky/
-[4]:	./Roihu/README.md
+[4]:	./slurm/roihu/README.md
 [5]:	https://github.com/sks190/SKVR
 [6]:	https://github.com/rahvaluule/erab
 [7]:	https://github.com/sks190/jr

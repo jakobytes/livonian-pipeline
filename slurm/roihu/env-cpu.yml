@@ -16,6 +16,7 @@ dependencies:
   - csvkit
   - jq                   # used by the polygon_to_place and runoregi_pages rules
   - tqdm
+  - pyarrow              # reading the verse embeddings (load_embeddings.py)
   - pip
   - pip:
     - git+https://github.com/hsci-r/shortsim

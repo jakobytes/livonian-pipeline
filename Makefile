@@ -17,24 +17,18 @@ python = python3
 # GPU switch for shortsim-ngrcos and poem_sim.py. Set GPU_FLAG= to run on CPU.
 GPU_FLAG ?= -g
 
-.PHONY: preprocess skvr erab jr kr vldl combined \
-        cpu-stage gpu-stage verse_sim poem_sim
+# Number of parts the poem similarity computation is split into
+# (e.g. one per GPU in a Slurm array job, see slurm/roihu).
+POEM_SIM_JOBS ?= 1
+
+.PHONY: preprocess skvr erab jr kr vldl combined cpu-stage gpu-stage
 
 # --- Stages ------------------------------------------------------------------
 # cpu-stage: parsing, cleaning, combining (single-threaded tools; run with -j)
 # gpu-stage: similarity computation (FAISS / PyTorch) and clustering
 cpu-stage: preprocess combined
 
-gpu-stage: verse_sim poem_sim
-
-verse_sim: \
-  $(DATA_DIR)/v_sim.tsv \
-  $(DATA_DIR)/v_clust.tsv \
-  $(DATA_DIR)/v_clusterings.csv
-
-poem_sim: \
-  $(DATA_DIR)/p_sim.csv \
-  $(DATA_DIR)/p_clust.tsv
+gpu-stage: verse_sim verse_clust poem_clust
 
 preprocess: skvr erab jr kr vldl
 
@@ -491,6 +485,15 @@ $(DATA_DIR)/v_clust.tsv: \
 	sed 's/^/4\t/' $(work_dir)/verse_sim/v_clust.loose.tsv >> $@
 	sed 's/^/5\t/' $(work_dir)/verse_sim/v_clust.tight-binary.tsv >> $@
 
+.PHONY: verse_sim verse_clust
+
+verse_sim: \
+  $(DATA_DIR)/v_sim.tsv \
+  $(work_dir)/v_sim.sqrt.tsv \
+  $(work_dir)/v_sim.binary.tsv
+
+verse_clust: $(DATA_DIR)/v_clust.tsv $(DATA_DIR)/v_clusterings.csv
+
 $(DATA_DIR)/v_clusterings.csv:
 	mkdir -p $(DATA_DIR)
 	echo 'clustering_id,name,description' > $@
@@ -511,15 +514,142 @@ $(DATA_DIR)/v_clusterings.csv:
 $(work_dir)/verses_cl_by_length.csv: $(DATA_DIR)/verses_cl.csv
 	$(python) code/sort_poems_by_length.py < $< > $@
 
-$(DATA_DIR)/p_sim.csv: $(work_dir)/verses_cl_by_length.csv
-	$(python) code/poem_sim.py -t 0.5 -p -r $(GPU_FLAG) -d 450 -i $< -o $@ \
-	  --sim-raw-thr 1 --sim-onesided-thr 0.1 --sim-sym-thr 0 \
-	  -L DEBUG --logfile $(work_dir)/poem_sim.log
+# The computation is split into $(POEM_SIM_JOBS) parts, which can be
+# computed independently (e.g. in parallel on several GPUs) and are then
+# concatenated. The parts are stored in a directory named after the number
+# of parts, so that parts from runs with different splits are never mixed.
+p_sim_parts_dir = $(work_dir)/p_sim/$(POEM_SIM_JOBS)
+p_sim_parts = $(foreach i,$(shell seq 0 $$(($(POEM_SIM_JOBS)-1))),\
+                $(p_sim_parts_dir)/part_$(i).csv)
 
-$(DATA_DIR)/p_clust.tsv: $(DATA_DIR)/p_sim.csv
+$(p_sim_parts_dir)/part_%.csv: $(work_dir)/verses_cl_by_length.csv
+	mkdir -p $(p_sim_parts_dir)
+	$(python) code/poem_sim.py -t 0.5 -p -r $(GPU_FLAG) -d 450 -i $< -o $@ \
+	  -j $* -J $(POEM_SIM_JOBS) \
+	  --sim-raw-thr 1 --sim-onesided-thr 0.1 --sim-sym-thr 0 \
+	  -L DEBUG --logfile $(p_sim_parts_dir)/part_$*.log
+
+$(DATA_DIR)/p_sim.csv: $(p_sim_parts)
+	head -n 1 $< > $@
+	for f in $^; do tail -n +2 $$f; done >> $@
+
+# Used for both the n-gram and the embedding-based similarities.
+%/p_clust.tsv: %/p_sim.csv
 	csvcut -c poem_id_1,poem_id_2,sim $< \
-	| tail -n +2 | csvformat -T | sort > $(work_dir)/p_sim.edges.tsv
-	cut -f 1 $(work_dir)/p_sim.edges.tsv | uniq > $(work_dir)/p_sim.nodes.tsv
-	echo | cat $(work_dir)/p_sim.nodes.tsv - $(work_dir)/p_sim.edges.tsv \
-	| shortsim-cluster -s 0.1 > $@
-	rm $(work_dir)/p_sim.nodes.tsv $(work_dir)/p_sim.edges.tsv
+	| tail -n +2 | csvformat -T | sort > $@.edges
+	cut -f 1 $@.edges | uniq > $@.nodes
+	echo | cat $@.nodes - $@.edges | shortsim-cluster -s 0.1 > $@
+	rm $@.nodes $@.edges
+
+.PHONY: poem_clust
+
+p_sim_part_%: $(p_sim_parts_dir)/part_%.csv ;
+
+poem_clust: $(DATA_DIR)/p_sim.csv $(DATA_DIR)/p_clust.tsv
+
+###################################################################
+# EMBEDDING-BASED SIMILARITY AND CLUSTERING
+###################################################################
+
+# The same tables as above, computed from precomputed verse embeddings
+# (https://a3s.fi/filter-data/index.html) instead of character n-grams.
+# They are written to $(DATA_DIR)/emb/$(EMB_MODEL), with the same file
+# names and formats. Verses without an embedding get a zero vector.
+#
+# There are no n-gram weightings here, so v_clust.tsv only contains the
+# clusterings default (0), tight (3) and loose (4).
+
+EMB_MODEL ?= filter_p4_vb_v45_w45_m10_iso
+EMB_URL ?= https://a3s.fi/filter-data
+# Minimum cosine similarity of verse embeddings (the threshold for which
+# the FILTER models' similarity tables were tuned).
+EMB_THR ?= 0.7
+
+emb_dir = $(DATA_DIR)/emb/$(EMB_MODEL)
+emb_work = $(work_dir)/emb/$(EMB_MODEL)
+emb_file = $(work_dir)/emb/verse_embeddings_$(EMB_MODEL).parquet
+emb_poems_file = $(work_dir)/emb/poems.parquet
+
+$(work_dir)/emb/%.parquet:
+	mkdir -p $(@D)
+	curl -fsSL -o $@ $(EMB_URL)/$*.parquet
+
+# one row per distinct verse text (for verse similarity)
+$(emb_work)/verse_vectors.npy: \
+  $(work_dir)/verse_sim/verses_cl.list.txt \
+  $(DATA_DIR)/verses_cl.csv \
+  $(emb_file) $(emb_poems_file)
+	mkdir -p $(@D)
+	$(python) code/load_embeddings.py -e $(emb_file) -p $(emb_poems_file) \
+	  -i $(DATA_DIR)/verses_cl.csv -t $< -o $@
+
+# one row per verse occurrence (for poem similarity)
+$(emb_work)/poem_vectors.npy: \
+  $(work_dir)/verses_cl_by_length.csv \
+  $(emb_file) $(emb_poems_file)
+	mkdir -p $(@D)
+	$(python) code/load_embeddings.py -e $(emb_file) -p $(emb_poems_file) \
+	  -i $< -o $@
+
+$(emb_dir)/v_sim.tsv: \
+  $(work_dir)/verse_sim/verses_cl.list.txt \
+  $(emb_work)/verse_vectors.npy
+	mkdir -p $(@D)
+	$(python) code/emb_verse_sim.py -e $(emb_work)/verse_vectors.npy \
+	  -t $(EMB_THR) $(GPU_FLAG) -p < $< > $@
+
+emb_clust_thr_default = 0.8
+emb_clust_thr_tight = 0.85
+emb_clust_thr_loose = 0.75
+
+$(emb_work)/v_clust.%.tsv: \
+  $(work_dir)/verse_sim/verses_cl.list.txt \
+  $(emb_dir)/v_sim.tsv
+	echo | cat $< - $(emb_dir)/v_sim.tsv \
+	| shortsim-cluster -s $(emb_clust_thr_$*) > $@
+
+$(emb_dir)/v_clust.tsv: \
+  $(emb_work)/v_clust.default.tsv \
+  $(emb_work)/v_clust.tight.tsv \
+  $(emb_work)/v_clust.loose.tsv
+	sed 's/^/0\t/' $(emb_work)/v_clust.default.tsv > $@
+	sed 's/^/3\t/' $(emb_work)/v_clust.tight.tsv >> $@
+	sed 's/^/4\t/' $(emb_work)/v_clust.loose.tsv >> $@
+
+$(emb_dir)/v_clusterings.csv:
+	mkdir -p $(@D)
+	echo 'clustering_id,name,description' > $@
+	echo '0,default,"$(EMB_MODEL)"' >> $@
+	echo '3,tight,"$(EMB_MODEL), threshold = 0.85"' >> $@
+	echo '4,loose,"$(EMB_MODEL), threshold = 0.75"' >> $@
+
+emb_p_sim_parts_dir = $(emb_work)/p_sim/$(POEM_SIM_JOBS)
+emb_p_sim_parts = $(foreach i,$(shell seq 0 $$(($(POEM_SIM_JOBS)-1))),\
+                    $(emb_p_sim_parts_dir)/part_$(i).csv)
+
+$(emb_p_sim_parts_dir)/part_%.csv: \
+  $(work_dir)/verses_cl_by_length.csv \
+  $(emb_work)/poem_vectors.npy
+	mkdir -p $(emb_p_sim_parts_dir)
+	$(python) code/poem_sim.py -e $(emb_work)/poem_vectors.npy \
+	  -t $(EMB_THR) -p -r $(GPU_FLAG) -i $< -o $@ \
+	  -j $* -J $(POEM_SIM_JOBS) \
+	  --sim-raw-thr 1 --sim-onesided-thr 0.1 --sim-sym-thr 0 \
+	  -L DEBUG --logfile $(emb_p_sim_parts_dir)/part_$*.log
+
+$(emb_dir)/p_sim.csv: $(emb_p_sim_parts)
+	head -n 1 $< > $@
+	for f in $^; do tail -n +2 $$f; done >> $@
+
+.PHONY: emb_vectors emb_verse_sim emb_verse_clust emb_poem_clust
+
+emb_vectors: $(emb_work)/verse_vectors.npy $(emb_work)/poem_vectors.npy
+
+emb_verse_sim: $(emb_dir)/v_sim.tsv
+
+emb_verse_clust: $(emb_dir)/v_clust.tsv $(emb_dir)/v_clusterings.csv
+
+emb_p_sim_part_%: $(emb_p_sim_parts_dir)/part_%.csv ;
+
+emb_poem_clust: $(emb_dir)/p_sim.csv $(emb_dir)/p_clust.tsv
+

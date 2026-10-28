@@ -2,6 +2,7 @@ import argparse
 import csv
 import itertools
 import logging
+import numpy as np
 import re
 import torch
 import tqdm
@@ -158,6 +159,10 @@ def parse_arguments():
         '-d', '--dim', type=int, default=450,
         help='The number of dimensions of n-gram vectors for verses')
     parser.add_argument(
+        '-e', '--embeddings', metavar='FILE', default=None,
+        help='Use the verse embeddings from FILE (a NumPy matrix with one'
+             ' row per input verse) instead of n-gram vectors.')
+    parser.add_argument(
         '-g', '--use-gpu', action='store_true',
         help='Use the GPU for computation.')
     parser.add_argument(
@@ -216,13 +221,23 @@ if __name__ == '__main__':
     
     verses = read_input(args.input_file)
     if args.regex is not None:
+        if args.embeddings is not None:
+            raise RuntimeError('--regex is not supported with --embeddings')
         verses = move_to_beginning(verses, args.regex)
-    
-    logging.info('starting vectorization')
-    m = vectorize([v[2] for v in verses], n=args.n, dim=args.dim,
-                  weighting=args.weighting)
-    m = torch.from_numpy(m)
-    logging.info('vectorization completed')
+
+    if args.embeddings is not None:
+        logging.info('loading embeddings')
+        m = torch.from_numpy(np.load(args.embeddings)).float()
+        if m.shape[0] != len(verses):
+            raise RuntimeError(
+                'The number of embeddings ({}) does not match the number'
+                ' of verses ({})!'.format(m.shape[0], len(verses)))
+    else:
+        logging.info('starting vectorization')
+        m = vectorize([v[2] for v in verses], n=args.n, dim=args.dim,
+                      weighting=args.weighting)
+        m = torch.from_numpy(m)
+        logging.info('vectorization completed')
     poem_boundaries = [0] \
         + [i+1 for i in range(len(verses)-1) if verses[i][0] != verses[i+1][0]] \
         + [len(verses)]
@@ -312,6 +327,7 @@ if __name__ == '__main__':
 
     except Exception as e:
         logging.critical(str(e))
+        raise
     finally:
         if alfp:
             alfp.close()

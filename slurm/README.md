@@ -1,5 +1,8 @@
 # Slurm jobs for computing cluster
 
+For CSC's Roihu, see [roihu/README.md](roihu/README.md). The scripts
+below were written for Puhti, which has been retired.
+
 This folder contains job scripts for running the pipeline on the
 [Puhti](https://docs.csc.fi/computing/systems-puhti/) supercomputer.
 For other systems, the resource specifications (e.g. partition names)
