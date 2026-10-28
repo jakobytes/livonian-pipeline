@@ -59,12 +59,14 @@ similarity jobs on existing preprocessed data.
 
 ### Embedding-based similarities
 
-Setting `EMB_MODEL` computes the similarity and clustering tables from
+Setting `EMB_MODEL` (default in the Makefile:
+`filter_p4_vb_v45_w45_m10_ctx`, with a similarity threshold `EMB_THR` of
+0.75) computes the similarity and clustering tables from
 precomputed verse embeddings
 (<https://a3s.fi/filter-data/index.html>) instead of character n-grams:
 
 ```
-EMB_MODEL=filter_p4_vb_v45_w45_m10_iso \
+EMB_MODEL=filter_p4_vb_v45_w45_m10_ctx \
   slurm/roihu/submit.sh project_XXXXXXX --skip-preprocess
 ```
 
@@ -74,8 +76,9 @@ downloads it and aligns it with the verses of the pipeline. The resulting
 tables have the same names and formats as the n-gram ones, and are
 written to `output/emb/<EMB_MODEL>/`. As there are no n-gram weightings,
 `v_clust.tsv` only contains three clusterings, `emb`, `emb-tight` and
-`emb-loose`. Their IDs continue after the six n-gram clusterings (6, 7, 8),
-as runoregi requires consecutive IDs; set `EMB_CLUST_ID=0` for a database
+`emb-loose`, named in runoregi with their thresholds (e.g. `emb (0.80)`).
+Their IDs continue after the six n-gram clusterings (6, 7, 8), as runoregi
+requires consecutive IDs; set `EMB_CLUST_ID=0` for a database
 with only the embedding-based clusterings.
 
 ### Runoregi database

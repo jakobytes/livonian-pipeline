@@ -564,11 +564,10 @@ poem_clust: $(DATA_DIR)/p_sim.csv $(DATA_DIR)/p_clust.tsv
 # can be loaded into the same tables. Use EMB_CLUST_ID=0 for a database with
 # only the embedding-based clusterings.
 
-EMB_MODEL ?= filter_p4_vb_v45_w45_m10_iso
+EMB_MODEL ?= filter_p4_vb_v45_w45_m10_ctx
 EMB_URL ?= https://a3s.fi/filter-data
-# Minimum cosine similarity of verse embeddings (the threshold for which
-# the FILTER models' similarity tables were tuned).
-EMB_THR ?= 0.7
+# Minimum cosine similarity of verse embeddings.
+EMB_THR ?= 0.75
 # ID of the first embedding-based verse clustering (see above).
 EMB_CLUST_ID ?= 6
 
@@ -605,7 +604,7 @@ $(emb_dir)/v_sim.tsv: \
 	$(python) code/emb_verse_sim.py -e $(emb_work)/verse_vectors.npy \
 	  -t $(EMB_THR) $(GPU_FLAG) -p < $< > $@
 
-emb_clust_thr_default = 0.8
+emb_clust_thr_default = 0.80
 emb_clust_thr_tight = 0.85
 emb_clust_thr_loose = 0.75
 
@@ -626,9 +625,9 @@ $(emb_dir)/v_clust.tsv: \
 $(emb_dir)/v_clusterings.csv:
 	mkdir -p $(@D)
 	echo 'clustering_id,name,description' > $@
-	echo '$(EMB_CLUST_ID),emb,"$(EMB_MODEL)"' >> $@
-	echo '$(shell echo $$(($(EMB_CLUST_ID)+1))),emb-tight,"$(EMB_MODEL), threshold = 0.85"' >> $@
-	echo '$(shell echo $$(($(EMB_CLUST_ID)+2))),emb-loose,"$(EMB_MODEL), threshold = 0.75"' >> $@
+	echo '$(EMB_CLUST_ID),emb ($(emb_clust_thr_default)),"$(EMB_MODEL), threshold = $(emb_clust_thr_default)"' >> $@
+	echo '$(shell echo $$(($(EMB_CLUST_ID)+1))),emb-tight ($(emb_clust_thr_tight)),"$(EMB_MODEL), threshold = $(emb_clust_thr_tight)"' >> $@
+	echo '$(shell echo $$(($(EMB_CLUST_ID)+2))),emb-loose ($(emb_clust_thr_loose)),"$(EMB_MODEL), threshold = $(emb_clust_thr_loose)"' >> $@
 
 emb_p_sim_parts_dir = $(emb_work)/p_sim/$(POEM_SIM_JOBS)
 emb_p_sim_parts = $(foreach i,$(shell seq 0 $$(($(POEM_SIM_JOBS)-1))),\
