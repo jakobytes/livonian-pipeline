@@ -73,8 +73,10 @@ EMB_MODEL=filter_p4_vb_v45_w45_m10_iso \
 downloads it and aligns it with the verses of the pipeline. The resulting
 tables have the same names and formats as the n-gram ones, and are
 written to `output/emb/<EMB_MODEL>/`. As there are no n-gram weightings,
-`v_clust.tsv` only contains the clusterings 0 (default), 3 (tight)
-and 4 (loose).
+`v_clust.tsv` only contains three clusterings, `emb`, `emb-tight` and
+`emb-loose`. Their IDs continue after the six n-gram clusterings (6, 7, 8),
+as runoregi requires consecutive IDs; set `EMB_CLUST_ID=0` for a database
+with only the embedding-based clusterings.
 
 ### Output
 
