@@ -12,6 +12,8 @@ import logging
 
 import numpy as np
 from numpy.linalg import norm
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from scipy.sparse import csr_matrix
 
@@ -76,13 +78,28 @@ def main():
     sorted_keys = keys[order]
 
     pf = pq.ParquetFile(args.embeddings_file)
-    dim = pf.schema_arrow.field('embedding').type.list_size
+    # the embeddings are stored either as fixed-size or as variable-size
+    # lists; in the latter case, the size is taken from the first row
+    emb_type = pf.schema_arrow.field('embedding').type
+    if isinstance(emb_type, pa.FixedSizeListType):
+        dim = emb_type.list_size
+    else:
+        first = next(pf.iter_batches(columns=['embedding'], batch_size=1))
+        dim = len(first.column('embedding')[0])
     m = np.zeros((n, dim), dtype=np.float32)
     found = np.zeros(len(keys), dtype=bool)
+    skipped = 0
     for i, batch in enumerate(pf.iter_batches(
             columns=['p_id', 'pos', 'embedding'], batch_size=65536)):
-        emb = batch.column('embedding').flatten().to_numpy()\
-                   .reshape(-1, dim).astype(np.float32)
+        # skip rows with a missing embedding or one of a different size
+        valid = pc.fill_null(
+            pc.equal(pc.list_value_length(batch.column('embedding')), dim),
+            False)
+        if not pc.all(valid).as_py():
+            skipped += len(batch) - pc.sum(valid).as_py()
+            batch = batch.filter(valid)
+        emb = pc.list_flatten(batch.column('embedding')).to_numpy()\
+                .reshape(-1, dim).astype(np.float32)
         bk = key(batch.column('p_id'), batch.column('pos'))
         idx = np.searchsorted(sorted_keys, bk)
         idx[idx >= len(sorted_keys)] = 0
@@ -100,6 +117,9 @@ def main():
         if i % 10 == 0:
             logging.info('{} batches read'.format(i+1))
 
+    if skipped:
+        logging.warning('{} rows without a valid embedding skipped'\
+                        .format(skipped))
     lengths = norm(m, axis=1, keepdims=True)
     np.divide(m, lengths, where=lengths > 0, out=m)
     logging.info('verses with an embedding: {} / {}'\
