@@ -4,7 +4,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --output=logs/%x-%j.out
 
 # Downloads the verse embeddings of EMB_MODEL and aligns them with the
