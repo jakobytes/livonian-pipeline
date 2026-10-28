@@ -556,14 +556,21 @@ poem_clust: $(DATA_DIR)/p_sim.csv $(DATA_DIR)/p_clust.tsv
 # They are written to $(DATA_DIR)/emb/$(EMB_MODEL), with the same file
 # names and formats. Verses without an embedding get a zero vector.
 #
-# There are no n-gram weightings here, so v_clust.tsv only contains the
-# clusterings default (0), tight (3) and loose (4).
+# There are no n-gram weightings here, so v_clust.tsv only contains three
+# clusterings: emb, emb-tight and emb-loose (the counterparts of default,
+# tight and loose). Runoregi uses the clustering IDs as positions in the
+# list of clusterings, so they must continue the numbering without gaps:
+# by default they follow the six n-gram clusterings (6, 7, 8), so that both
+# can be loaded into the same tables. Use EMB_CLUST_ID=0 for a database with
+# only the embedding-based clusterings.
 
 EMB_MODEL ?= filter_p4_vb_v45_w45_m10_iso
 EMB_URL ?= https://a3s.fi/filter-data
 # Minimum cosine similarity of verse embeddings (the threshold for which
 # the FILTER models' similarity tables were tuned).
 EMB_THR ?= 0.7
+# ID of the first embedding-based verse clustering (see above).
+EMB_CLUST_ID ?= 6
 
 emb_dir = $(DATA_DIR)/emb/$(EMB_MODEL)
 emb_work = $(work_dir)/emb/$(EMB_MODEL)
@@ -612,16 +619,16 @@ $(emb_dir)/v_clust.tsv: \
   $(emb_work)/v_clust.default.tsv \
   $(emb_work)/v_clust.tight.tsv \
   $(emb_work)/v_clust.loose.tsv
-	sed 's/^/0\t/' $(emb_work)/v_clust.default.tsv > $@
-	sed 's/^/3\t/' $(emb_work)/v_clust.tight.tsv >> $@
-	sed 's/^/4\t/' $(emb_work)/v_clust.loose.tsv >> $@
+	sed 's/^/$(EMB_CLUST_ID)\t/' $(emb_work)/v_clust.default.tsv > $@
+	sed 's/^/$(shell echo $$(($(EMB_CLUST_ID)+1)))\t/' $(emb_work)/v_clust.tight.tsv >> $@
+	sed 's/^/$(shell echo $$(($(EMB_CLUST_ID)+2)))\t/' $(emb_work)/v_clust.loose.tsv >> $@
 
 $(emb_dir)/v_clusterings.csv:
 	mkdir -p $(@D)
 	echo 'clustering_id,name,description' > $@
-	echo '0,default,"$(EMB_MODEL)"' >> $@
-	echo '3,tight,"$(EMB_MODEL), threshold = 0.85"' >> $@
-	echo '4,loose,"$(EMB_MODEL), threshold = 0.75"' >> $@
+	echo '$(EMB_CLUST_ID),emb,"$(EMB_MODEL)"' >> $@
+	echo '$(shell echo $$(($(EMB_CLUST_ID)+1))),emb-tight,"$(EMB_MODEL), threshold = 0.85"' >> $@
+	echo '$(shell echo $$(($(EMB_CLUST_ID)+2))),emb-loose,"$(EMB_MODEL), threshold = 0.75"' >> $@
 
 emb_p_sim_parts_dir = $(emb_work)/p_sim/$(POEM_SIM_JOBS)
 emb_p_sim_parts = $(foreach i,$(shell seq 0 $$(($(POEM_SIM_JOBS)-1))),\
